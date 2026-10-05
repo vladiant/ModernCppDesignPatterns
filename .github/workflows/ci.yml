@@ -1,0 +1,117 @@
+# CI for ModernCppDesignPatterns.
+#
+# Two jobs, matching the verified toolchain facts for this repo:
+#
+#   * build-gcc14 (PRIMARY GATE) - installs GCC 14 and builds the full 8-project
+#     aggregate with warnings-as-errors, then runs the whole CTest suite. The
+#     four C++23 projects (builder/decorator/command/visitor) need GCC 14
+#     (deducing-this / std::expected), so this is the only job that can build
+#     everything.
+#
+#   * build-clang18 (PORTABILITY) - builds+tests ONLY the four C++20 projects
+#     with clang-18 via the PATTERN_CXX20_ONLY aggregate filter. clang-18 +
+#     libstdc++ 13 cannot provide std::expected, so it must not try to build the
+#     C++23 projects. Green here proves the C++20 code is compiler-portable.
+#
+# Linux/Ubuntu-24.04 only, matching SRS A-3 / OQ-1 (Linux-only baseline).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to save free-tier minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------------
+  # PRIMARY GATE: full aggregate build + full test suite on GCC 14.
+  # --------------------------------------------------------------------------
+  build-gcc14:
+    name: gcc-14 aggregate (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install GCC 14
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
+
+      # Catch2 v3.7.1 is pulled once via FetchContent. Pin its download location
+      # and cache it so only the first run hits the network (SRS build note).
+      - name: Cache Catch2 (FetchContent)
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          key: catch2-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_COMPILER=g++-14
+          -DPATTERN_WERROR=ON
+          -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
+
+      - name: Build (all 8 projects)
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # --------------------------------------------------------------------------
+  # PORTABILITY: C++20 subset only, built with clang-18.
+  # --------------------------------------------------------------------------
+  build-clang18:
+    name: clang-18 C++20 subset (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install clang-18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18
+
+      - name: Cache Catch2 (FetchContent)
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          key: catch2-clang-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+
+      # PATTERN_CXX20_ONLY=ON drops the four C++23 projects from the aggregate so
+      # clang-18 only ever sees C++20 code.
+      - name: Configure (C++20 subset)
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DPATTERN_WERROR=ON
+          -DPATTERN_CXX20_ONLY=ON
+          -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
+
+      - name: Build (4 C++20 projects)
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
