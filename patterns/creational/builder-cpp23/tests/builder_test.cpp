@@ -49,6 +49,34 @@ TEST_CASE("Empty header name fails with empty_header_name", "[builder][error]") 
     REQUIRE(result.error() == BuildError::empty_header_name);
 }
 
+TEST_CASE("Lvalue chaining preserves value category (deducing this)",
+          "[builder][deducing-this][lvalue]") {
+    // The design states setters called on an lvalue return lvalue refs to the
+    // SAME builder (not a copy). Verify reference identity on the lvalue branch,
+    // which the rvalue-only test above does not cover.
+    RequestBuilder b;
+    auto& r1 = b.method("PUT");
+    REQUIRE(&r1 == &b);
+    auto& r2 = r1.url("https://example.com/x");
+    REQUIRE(&r2 == &b);
+
+    // The same lvalue builder accumulates state across separate statements and
+    // can be built from (const-lvalue build() overload) without being consumed.
+    b.header("A", "1");
+    b.header("B", "2");
+    auto result = b.build();
+    REQUIRE(result.has_value());
+    REQUIRE(result->method == "PUT");
+    REQUIRE(result->headers.size() == 2);
+    REQUIRE(result->headers[0].first == "A");
+    REQUIRE(result->headers[1].first == "B");
+
+    // build() on a const lvalue copies (does not consume): builder still usable.
+    auto again = b.build();
+    REQUIRE(again.has_value());
+    REQUIRE(again->headers.size() == 2);
+}
+
 TEST_CASE("Rvalue-chained temporary builds successfully", "[builder][deducing-this]") {
     // Proves the deducing-this ref-category preservation compiles and works:
     // chaining on a temporary returns rvalues, ending in the rvalue build().

@@ -71,6 +71,22 @@ TEST_CASE("Unsubscribed observer no longer receives events", "[observer][unsubsc
     REQUIRE(log == std::vector<std::string>{"b:x"});
 }
 
+TEST_CASE("Re-subscribe after unsubscribe succeeds", "[observer][dedup][resubscribe]") {
+    std::vector<std::string> log;
+    Subject subject;
+
+    REQUIRE(subject.subscribe(recorder(10, "a", log)));
+    REQUIRE(subject.unsubscribe(Observer{10, "a", nullptr}));
+    REQUIRE(subject.size() == 0);
+    // Dedup state is tied to membership, not history: the same identity can be
+    // registered again once removed.
+    REQUIRE(subject.subscribe(recorder(10, "a", log)));
+    REQUIRE(subject.size() == 1);
+
+    subject.publish(Event{"t", "x"});
+    REQUIRE(log == std::vector<std::string>{"a:x"});
+}
+
 TEST_CASE("operator<=> and == compare by (priority, name) only", "[observer][spaceship]") {
     Observer x{10, "a", nullptr};
     Observer y{10, "a", [](const Event&) {}}; // different callback, same identity
