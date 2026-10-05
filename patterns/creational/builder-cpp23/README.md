@@ -32,8 +32,12 @@ readable fluent chain, with validation that reports *why* a build failed.
 ## Build & run
 
 ```bash
-cmake -S . -B build -DPATTERN_WERROR=ON
+cmake -S . -B build -DPATTERN_WERROR=ON -DCMAKE_CXX_COMPILER=g++-14
 cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/builder_demo
 ```
+
+> **Toolchain note:** the fluent setters use *deducing this* (P0847), which
+> requires **g++ ≥ 14** or **clang ≥ 18**. The default `g++` 13.3 does not
+> support it — configure with `-DCMAKE_CXX_COMPILER=g++-14`.
