@@ -1,8 +1,8 @@
 # Project Status — Modern C++ Design Patterns
 
 **As of:** 2026-10-05
-**Version:** `0.0.0` (no tag cut yet; Project Manager owns the first tag)
-**State:** Feature-complete, QA-passed, documented — awaiting first release tag.
+**Version:** `0.1.0` (released; tag `v0.1.0`)
+**State:** Released — feature-complete, QA-passed, documented, first version tagged.
 
 ## Summary
 
@@ -29,7 +29,7 @@ per-project READMEs, design, SRS, test report) is in place.
 - The four C++20 projects also build on **g++ 13** and **clang-18**.
 - Linux / Ubuntu 24.04 baseline; no Windows/macOS support claimed.
 
-## Next step
+## Release history
 
-Project Manager to bump `VERSION` and cut the first release tag; the
-`CHANGELOG.md` `[Unreleased]` section becomes that version's entry.
+- **v0.1.0** (2026-10-05) — first release: the initial portfolio of eight
+  modern-C++ GoF patterns. `CHANGELOG.md` holds the detailed entry.

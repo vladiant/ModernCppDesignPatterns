@@ -7,8 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Initial content for the first release. No version has been tagged yet; the
-project `VERSION` is `0.0.0`.
+## [0.1.0] - 2026-10-05
+
+First tagged release: the initial portfolio of eight modern-C++ GoF patterns.
 
 ### Added
 
@@ -38,4 +39,5 @@ project `VERSION` is `0.0.0`.
   (`docs/testing/ModernCppDesignPatterns-test-report.md`), top-level `README.md`,
   project status (`docs/status.md`), and this changelog. MIT `LICENSE`.
 
-[Unreleased]: https://github.com/vladiant/ModernCppDesignPatterns/commits/main
+[Unreleased]: https://github.com/vladiant/ModernCppDesignPatterns/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/vladiant/ModernCppDesignPatterns/releases/tag/v0.1.0
