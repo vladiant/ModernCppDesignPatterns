@@ -1094,3 +1094,625 @@ After #1, add the aggregate root `CMakeLists.txt` and wire each subsequent
 project into it.
 
 **Design is ready for the C++ Developer agent to implement.**
+
+---
+---
+
+## C++26 Idiom Tier — Design
+
+**Designs against:** `docs/requirements/SRS.md` §10 ("Addendum — C++26 Idiom
+Tier"), FR-C26-1 … FR-C26-10, NFR-C26-1 … NFR-C26-9, A-C26-1 … A-C26-6.
+**Baseline toolchain:** g++-14 (14.2) with `-std=c++26` (`__cplusplus ==
+202400`), Ubuntu 24.04, CMake ≥ 3.28, Catch2 v3.7.1. **clang-18 is explicitly
+out of scope for this tier** — it cannot drive `-std=c++26` fully and lacks the
+library facilities (A-C26-1, NFR-C26-1).
+
+This section is an **addendum**: it adds a fourth standard grouping to the
+repository without altering the C++20/C++23 tiers above. It follows the same
+prescriptive, contract-first style — interface signatures are normative, bodies
+are sketches, and every multi-option decision is recorded under
+**Design Decisions (DD-C26-n)** in §C26.9.
+
+### C26.0 SRS open-question resolutions
+
+| OQ | Question | Resolution | DD |
+|----|----------|-----------|----|
+| OQ-C26-1 | Reflection build-gate mechanism/name | CMake option **`PATTERN_ENABLE_REFLECTION`** (default `OFF`) **plus** a `__cpp_reflection` feature probe; aggregate never adds the subdir unless the option is ON. | DD-C26-8 |
+| OQ-C26-2 | Shim shared vs per-project | **Per-project `compat.hpp`** (one copy in each of the 4 projects), in namespace **`gof`**. Keeps every project standalone (FR-C26-2). | DD-C26-3 |
+| OQ-C26-3 | One aggregate/CI entry point for all 3 (now 4) standard tiers, or separate? | **One shared aggregate** root `CMakeLists.txt`; the C++26 grouping is wired behind a new **`PATTERN_ENABLE_CPP26`** option (default `OFF`) so non-g++-14 jobs are unaffected and CI stays green. | DD-C26-9 |
+
+### C26.1 Architecture Overview
+
+Unlike the C++20/C++23 tiers (one standalone project **per pattern**), the
+C++26 tier has **21 buildable patterns + 1 gated reflection showcase** — far too
+many for one-per-pattern without drowning the repo in near-identical CMake
+boilerplate. The stakeholder also supplied the nine behavioral patterns as a
+**single grouped reference translation unit** (`file_behavioral.cpp`), which
+establishes the grouping granularity and the exact `compat.hpp` surface.
+
+**Decision (DD-C26-1):** deliver the tier as **four standalone CMake projects,
+grouped by GoF category**, each with its own `project()`, `compat.hpp`, runnable
+`_demo`, Catch2 tests, and README:
+
+| Project | Directory | Patterns |
+|---------|-----------|----------|
+| `creational_cpp26` | `patterns/creational/creational-cpp26/` | C1 Singleton, C2 Factory Method, C3 Abstract Factory, C4 Builder, C5 Prototype |
+| `structural_cpp26` | `patterns/structural/structural-cpp26/` | C6 Adapter, C7 Bridge, C8 Composite, C9 Decorator, C10 Facade, C11 Flyweight, C12 Proxy |
+| `behavioral_cpp26` | `patterns/behavioral/behavioral-cpp26/` | C13 Strategy, C14 Observer, C15 Command, C16 State, C17 Visitor/Interpreter, C18 Template Method, C19 Iterator, C20 Chain of Responsibility, C21 Memento |
+| `reflection_cpp26` **(gated)** | `patterns/reflection/reflection-cpp26/` | C22 Reflection showcase — **excluded from default/CI build** (DD-C26-8) |
+
+A **fifth** category directory `patterns/reflection/` is introduced (the GoF
+has no "reflection" category; C22 is a language-feature showcase, so it earns
+its own grouping rather than being wedged into creational/structural/behavioral).
+This keeps the self-describing path convention intact (`patterns/<group>/`).
+
+```mermaid
+graph TD
+    subgraph Repo["ModernCppDesignPatterns (repo root)"]
+        AGG["CMakeLists.txt (aggregate)\nPATTERN_ENABLE_CPP26 (OFF)\nPATTERN_ENABLE_REFLECTION (OFF)\nFetchContent(Catch2) once"]
+    end
+
+    subgraph C26["C++26 tier (g++-14 -std=c++26)"]
+        CR["creational-cpp26\n(C1–C5)"]
+        SR["structural-cpp26\n(C6–C12)"]
+        BE["behavioral-cpp26\n(C13–C21)"]
+        RF["reflection-cpp26\n(C22, GATED)"]
+    end
+
+    AGG -. "add_subdirectory (if PATTERN_ENABLE_CPP26)" .-> CR
+    AGG -. .-> SR
+    AGG -. .-> BE
+    AGG -. "add_subdirectory (ONLY if PATTERN_ENABLE_REFLECTION)" .-> RF
+
+    Catch2["Catch2 v3.7.1 (FetchContent, test-only)"]
+    CR --> Catch2
+    SR --> Catch2
+    BE --> Catch2
+
+    CR -. "has own" .-> SHIM1["compat.hpp (gof::)"]
+    SR -. .-> SHIM2["compat.hpp (gof::)"]
+    BE -. .-> SHIM3["compat.hpp (gof::)"]
+    RF -. .-> SHIM4["compat.hpp (gof::)"]
+```
+
+**Dependency direction:** aggregate → the three buildable C++26 projects
+(build-time only, dashed, behind `PATTERN_ENABLE_CPP26`); reflection is wired in
+**only** behind `PATTERN_ENABLE_REFLECTION`. No project→project edges; each ships
+its own `compat.hpp` (DD-C26-3). The three buildable projects reuse the
+aggregate's single Catch2 (DD-2, unchanged).
+
+### C26.2 Project internal layout
+
+**Pattern logic is header-only** (one header per pattern), `app/main.cpp` is a
+thin narrative demo, and `tests/` holds Catch2 TUs. The stakeholder reference
+(`file_behavioral.cpp`) is a *single demo+logic TU*; we **split it** so Catch2
+tests can `#include` and assert on the pattern logic directly, matching the
+existing tiers' testability contract (DD-C26-2, DD-C26-12).
+
+`behavioral-cpp26/` shown as the template (the other three have the same shape):
+
+```
+behavioral-cpp26/
+├── CMakeLists.txt                       # standalone project(behavioral_cpp26)
+├── README.md                            # patterns + C++26 + idioms + active shims (FR-C26-9)
+├── include/
+│   └── mcpp/
+│       └── behavioral26/
+│           ├── compat.hpp               # namespace gof (per-project copy, DD-C26-3)
+│           ├── strategy.hpp             # C13
+│           ├── observer.hpp             # C14
+│           ├── command.hpp              # C15
+│           ├── state.hpp                # C16
+│           ├── interpreter.hpp          # C17 (visitor/interpreter)
+│           ├── template_method.hpp      # C18
+│           ├── iterator.hpp             # C19
+│           ├── chain.hpp                # C20
+│           └── memento.hpp              # C21
+├── app/
+│   └── main.cpp                         # one narrative demo exercising all 9 (FR-C26-3)
+└── tests/
+    ├── strategy_test.cpp
+    ├── observer_test.cpp
+    ├── command_test.cpp
+    ├── state_test.cpp
+    ├── interpreter_test.cpp
+    ├── template_method_test.cpp
+    ├── iterator_test.cpp
+    ├── chain_test.cpp
+    └── memento_test.cpp
+```
+
+Rules (all four projects):
+- **Header-first, INTERFACE library** per project (`behavioral26`,
+  `creational26`, `structural26`, `reflection26`). Pattern code lives entirely
+  in `include/mcpp/<group>26/*.hpp`; no `src/` (DD-C26-2).
+- **`compat.hpp` sits beside the pattern headers** in
+  `include/mcpp/<group>26/compat.hpp`, so a pattern header's `#include
+  "compat.hpp"` resolves relatively (matching the reference file) while demo/test
+  TUs use the full path `<mcpp/<group>26/strategy.hpp>`.
+- **One demo** `app/main.cpp` per project narrates every pattern in the group
+  (the behavioral demo is the reference file's `main()` body, re-pointed at the
+  split headers). Exit code 0, human-readable output (AC-C26-2).
+- **Tests**: one TU per pattern, all compiled into a single
+  `<group>26_tests` executable; `Catch2WithMain` supplies `main()`;
+  `catch_discover_tests` registers one CTest entry per `TEST_CASE`
+  (AC-C26-3).
+- **Namespace deviation:** the shim lives in **`gof`** (not `mcpp::...`) because
+  the stakeholder reference and the "retire GoF boilerplate" narrative read best
+  with `gof::function_ref`, `gof::overloaded`, `gof::polymorphic`,
+  `gof::indirect`. Pattern *logic* still lives in `mcpp::<group>26::...`. Only
+  the shim types are in `gof` (DD-C26-3).
+
+### C26.3 The compatibility shim — `compat.hpp` (normative API contract)
+
+`compat.hpp` selects the **real standard type when its feature-test macro is
+defined**, else provides a minimal, honest fallback (A-C26-2, FR-C26-7,
+NFR-C26-3). The developer must unit-test each fallback. Verified facts on
+g++-14 `-std=c++26`: `generator`, `move_only_function`, `expected`, and
+*deducing this* are **present** (used directly, NFR-C26-2); `function_ref`,
+`polymorphic`, `indirect`, and reflection are **absent** (shimmed/gated).
+
+**Feature-test macros used (DD-C26-4):**
+
+| Facility | Macro probed | g++-14 `-std=c++26` | compat action |
+|----------|--------------|---------------------|---------------|
+| `std::function_ref` | `__cpp_lib_function_ref` | absent | `gof::function_ref` fallback |
+| `std::polymorphic` | `__cpp_lib_polymorphic` | absent | `gof::polymorphic` fallback |
+| `std::indirect` | `__cpp_lib_indirect` | absent | `gof::indirect` fallback |
+| `std::generator` | `__cpp_lib_generator` | **present** | used directly (guarded at call sites, DD-C26-11) |
+| `std::move_only_function` | `__cpp_lib_move_only_function` | present | used directly (no shim) |
+| `std::expected` | `__cpp_lib_expected` | present | used directly (no shim) |
+| P2996 reflection | `__cpp_reflection` | absent | project build-gated (DD-C26-8) |
+| `gof::overloaded` | *(no std type)* | n/a | **always** provided by the shim |
+
+The selection idiom (sketch, repeated per type):
+```cpp
+// compat.hpp — namespace gof
+#if defined(__cpp_lib_function_ref)
+  #include <functional>
+  namespace gof { template <class Sig> using function_ref = std::function_ref<Sig>; }
+#else
+  namespace gof { /* fallback definition below */ }
+#endif
+```
+
+#### C26.3.1 `gof::overloaded` (always shim-provided)
+Classic aggregate-of-lambdas + deduction guide. No standard type exists, so it
+is **unconditionally** defined.
+```cpp
+namespace gof {
+template <class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;   // deduction guide
+}
+```
+Contract: usable as the single-visitor argument to `std::visit`. Used by C8,
+C16, C17.
+
+#### C26.3.2 `gof::function_ref<Sig>` (DD-C26-5)
+**Non-owning** reference to any callable with signature `Sig`. Prefer
+`std::function_ref` when `__cpp_lib_function_ref` is defined. Fallback contract:
+
+```cpp
+namespace gof {
+template <class Sig> class function_ref;                 // primary left undefined
+
+template <class R, class... Args>
+class function_ref<R(Args...)> {
+public:
+    // Bind to any lvalue/temporary callable f with compatible signature.
+    // Precondition: f outlives this function_ref (non-owning).
+    template <class F>
+        requires (!std::same_as<std::remove_cvref_t<F>, function_ref>) &&
+                 std::invocable<F&, Args...>
+    function_ref(F&& f) noexcept;                        // stores &f + thunk
+
+    function_ref(const function_ref&) noexcept = default;    // trivially copyable
+    function_ref& operator=(const function_ref&) noexcept = default;
+
+    R operator()(Args... args) const;                    // forwards to the referent
+private:
+    void* obj_{};
+    R (*thunk_)(void*, Args...){};
+};
+
+// Second specialization for const-qualified call: function_ref<R(Args...) const>
+}
+```
+- **No empty/null state** (mirrors `std::function_ref`): there is no default
+  constructor that produces a callable-but-empty object; constructing always
+  binds to a referent. (If a sentinel is ever needed, document calling it as UB.)
+- **Lifetime:** non-owning — the referent must outlive the `function_ref`. This
+  is exactly its value: zero allocation per call (C13 per-call strategy, C19
+  internal-iterator fallback).
+- **Two signature forms** must be supported: `R(Args...)` and
+  `R(Args...) const` (the reference uses `bool(int,int)` and `void(int)`).
+
+#### C26.3.3 `gof::polymorphic<T>` (DD-C26-6)
+**Value type with deep-copy semantics**: copying the wrapper deep-clones the
+owned object, including a derived dynamic type. Prefer `std::polymorphic` when
+`__cpp_lib_polymorphic` is defined. Fallback contract:
+
+```cpp
+namespace gof {
+template <class T>
+class polymorphic {
+public:
+    // Own a concrete U (U == T or U publicly derived from T), captured by value.
+    template <class U = T>
+        requires std::derived_from<std::remove_cvref_t<U>, T> ||
+                 std::same_as<std::remove_cvref_t<U>, T>
+    explicit polymorphic(U u);
+
+    template <class U, class... Args>
+    explicit polymorphic(std::in_place_type_t<U>, Args&&... args);
+
+    polymorphic(const polymorphic& other);               // deep clone via stored copier
+    polymorphic(polymorphic&& other) noexcept;            // steal; other becomes valueless
+    polymorphic& operator=(const polymorphic&);
+    polymorphic& operator=(polymorphic&&) noexcept;
+    ~polymorphic();
+
+    T&       operator*()        noexcept;   const T& operator*()  const noexcept;
+    T*       operator->()       noexcept;   const T* operator->() const noexcept;
+private:
+    T*  ptr_{};                       // owned, dynamic type may be derived
+    T* (*clone_)(const T*){};         // copier instantiated knowing concrete U
+    void(*destroy_)(T*){};            // deleter instantiated knowing concrete U
+};
+}
+```
+**Fallback mechanism (honest):** the copier/deleter function pointers are
+instantiated *from the concrete `U`* at the constructing call site, so a copy
+reconstructs `new U(*static_cast<const U*>(src))` and deep-clones the **dynamic**
+type without needing a virtual `clone()`. This mirrors how `std::polymorphic`
+captures the concrete type — user code (C5, C7, C9) is unchanged whether the
+real or fallback type is active.
+
+**Documented fallback limits (A-C26-2):**
+- Each constructing `U` must be **copy-constructible** and complete at the
+  construction site.
+- `U` must be publicly derived from (or equal to) `T` so `U* → T*` is valid.
+- **No allocator / `memory_resource` support, not `constexpr`-usable**, no
+  incomplete-type support beyond the construction site. The shim is a
+  demonstration aid, not a production reimplementation (A-C26-2).
+- The README of each project using it states "fallback `gof::polymorphic` active
+  on g++-14" (FR-C26-9).
+
+#### C26.3.4 `gof::indirect<T>` (DD-C26-7)
+**Value type holding a heap `T` with value (non-polymorphic) copy semantics** —
+used for recursive data types (C17 `Expr`). Prefer `std::indirect` when
+`__cpp_lib_indirect` is defined. Fallback contract:
+
+```cpp
+namespace gof {
+template <class T>
+class indirect {
+public:
+    indirect() requires std::default_initializable<T>;   // allocates a default T
+    template <class... Args>
+    explicit indirect(std::in_place_t, Args&&... args);   // allocates T(args...)
+
+    indirect(const indirect& other);                      // deep copy: new T(*other)
+    indirect(indirect&& other) noexcept;                  // steal; other becomes valueless
+    indirect& operator=(const indirect&);
+    indirect& operator=(indirect&&) noexcept;
+    ~indirect();
+
+    T&       operator*()        &  noexcept;  const T& operator*()  const& noexcept;
+    T*       operator->()          noexcept;  const T* operator->() const  noexcept;
+private:
+    T* ptr_{};                                            // sole owned heap box
+};
+}
+```
+- Copy = deep copy of the single stored `T` (value semantics, **not**
+  polymorphic — no dynamic-type cloning, by design distinct from `polymorphic`).
+- **Moved-from state is valueless**: `ptr_ == nullptr`; dereferencing a
+  moved-from `indirect` is UB (documented). This matches the reference's
+  `std::in_place` construction of `BinOp` children.
+
+### C26.4 Per-pattern idiom mapping → demo scenario (FR-C26-5)
+
+Each row gives the concrete, reviewer-legible scenario and the visible C++26
+idiom (SRS §10.2 catalogue). **C13–C21 are seeded by the stakeholder reference
+`file_behavioral.cpp`** — the design adopts its scenarios verbatim and splits its
+logic into the headers of §C26.2 (DD-C26-12). That file also fixes the required
+`compat.hpp` surface (`gof::function_ref`, `gof::overloaded`, `gof::indirect`,
+`std::move_only_function`, guarded `std::generator`, deducing this).
+
+**Creational — `creational-cpp26` (C1–C5):**
+
+| # | Pattern | Idiom (visible) | Demo scenario |
+|---|---------|-----------------|---------------|
+| C1 | Singleton | `= delete("reason")` | An `AppConfig` single-instance accessor; copy/move ctors are `= delete("AppConfig is a process-wide singleton; take a const& instead")`, so a copy attempt yields a *readable* diagnostic (demo shows a commented line that fails to compile). |
+| C2 | Factory Method | `std::move_only_function` creators + `std::expected` | A `ShapeFactory` registry mapping a name → move-only creator closure; `create("hexagon")` returns `std::expected<Shape, FactoryError>`, unknown key → `std::unexpected(unknown_kind)`. |
+| C3 | Abstract Factory | concepts over "theme" types | Light/Dark `WidgetFactory` families constrained by a `WidgetFactory` concept (no virtual factory base); a generic client renders a dialog from whichever family it is handed. |
+| C4 | Builder | deducing this (`this auto&& self`) | An immutable `HttpRequest` fluent builder; setters `(this Self&& self, …)` preserve value category so an rvalue chain moves out; `build()` → `std::expected`. |
+| C5 | Prototype | `gof::polymorphic<T>` (copy = deep clone) | A `Shape` prototype registry storing `gof::polymorphic<Shape>`; cloning a registered prototype is a **plain copy** — no virtual `clone()`. |
+
+**Structural — `structural-cpp26` (C6–C12):**
+
+| # | Pattern | Idiom (visible) | Demo scenario |
+|---|---------|-----------------|---------------|
+| C6 | Adapter | concept as the target interface | A legacy index/Fahrenheit sensor adapted to satisfy a modern `TemperatureSource` **concept** (the "target" is a concept, not an abstract base). |
+| C7 | Bridge | `gof::polymorphic<Impl>` member | A `Window` abstraction holding a value `gof::polymorphic<Renderer>` implementor; the bridge is value-semantic and deep-copyable (no raw/unique pointer to impl). |
+| C8 | Composite | `std::variant` + recursive lambda via deducing this | A filesystem tree (`File` / `Directory` in a `variant`); total size computed by a `[](this auto&& self, …)` self-recursive lambda — no virtual `Component`. |
+| C9 | Decorator | layers owned as `gof::polymorphic` | A `Notifier` base wrapped by `SMS`/`Email`/`Slack` decorators, each layer owned as `gof::polymorphic<Notifier>` (copy deep-clones the whole stack; no manual clone plumbing). |
+| C10 | Facade | `std::expected::transform` chain | An `OrderFacade` chaining `validate()` → `charge()` → `ship()` with `std::expected::transform`/`and_then`, flattening nested error checks. |
+| C11 | Flyweight | `std::shared_ptr<const T>` cache | A `GlyphCache` interning immutable glyphs as `shared_ptr<const Glyph>`; repeated characters share one instance. |
+| C12 | Proxy | `std::call_once` lazy load | A virtual proxy for an expensive `Image`; the real resource is loaded exactly once via `std::call_once` + `std::once_flag` (replaces a hand-rolled flag+mutex). |
+
+**Behavioral — `behavioral-cpp26` (C13–C21, seeded by the reference file):**
+
+| # | Pattern | Idiom (visible) | Demo scenario (from `file_behavioral.cpp`) |
+|---|---------|-----------------|--------------------------------------------|
+| C13 | Strategy | `gof::function_ref` (per call) + `std::move_only_function` (stored) | `sort_with(vec, order)` takes a per-call `function_ref<bool(int,int)>`; `Checkout` stores a `move_only_function<double(double) const>` pricing strategy. |
+| C14 | Observer | `Signal<Args...>` of move-only slots | `Signal<std::string_view,int> price_changed`; slots are `move_only_function` (may own a `unique_ptr`); `connect`/`disconnect`/`emit`. |
+| C15 | Command | do/undo closure pairs | `History` of `Command{label, redo, undo}` move-only closures over a text document; execute / undo / redo. |
+| C16 | State | `variant` states × events, one `std::visit` | Media player: `variant<Idle,Playing,Paused>` × `variant<Play,Pause,Stop>` resolved by a single `std::visit(gof::overloaded{…})` transition table. |
+| C17 | Visitor/Interpreter | `std::visit` + `gof::overloaded`, `gof::indirect` for recursion | Arithmetic AST `Expr = variant<Num,BinOp>` with `gof::indirect<Expr>` children; `eval`/`show` are overload sets — new ops without `accept()/visit()`. |
+| C18 | Template Method | deducing this + `requires` on hooks | `Exporter::run(this auto&& self) requires { self.open(); self.write_rows(); self.close(); }`; `CsvExporter`/`JsonExporter` supply hooks — no virtuals/CRTP. |
+| C19 | Iterator | `std::generator` (internal-iterator fallback) | In-order binary-tree traversal as `std::generator<int>` when `__cpp_lib_generator` is defined, else an internal iterator driven by `gof::function_ref<void(int)>` (DD-C26-11). |
+| C20 | Chain of Responsibility | `std::optional`-returning handlers | `ApprovalChain` of `move_only_function<optional<string>(const Request&) const>` handlers; first engaged (non-`nullopt`) result wins. |
+| C21 | Memento | plain value copy | `Editor::Snapshot` is a plain copy of `(text, cursor)`; `save()`/`restore()` — no friend-access snapshot class. |
+
+**Reflection showcase — `reflection-cpp26` (C22, GATED, DD-C26-8):**
+
+| # | Pattern | Idiom | Demo scenario |
+|---|---------|-------|---------------|
+| C22 | Reflection showcase | `^^T`, `[: :]`, `template for` | Generate a generic `to_string(const Aggregate&)` / field enumerator over an arbitrary aggregate using P2996 reflection + `template for`, replacing hand-written per-type switches. **Source committed, excluded from default/CI build** (requires an experimental reflection compiler). |
+
+### C26.5 Reflection gating mechanism (FR-C26-8, A-C26-3, DD-C26-8)
+
+P2996 reflection builds on **no** compiler available here. The showcase is
+committed as source but must never reach the default/CI build or break it
+(NFR-C26-4, AC-C26-6/7). Two-layer gate:
+
+1. **Aggregate layer (primary):** the root `CMakeLists.txt` adds the reflection
+   subdir **only** when `PATTERN_ENABLE_REFLECTION` (default `OFF`) is `ON`. CI
+   never sets it → the project is never configured in CI → CI stays green.
+2. **Standalone / belt-and-braces layer:** `reflection-cpp26/CMakeLists.txt`
+   additionally probes the compiler for reflection support and, if absent,
+   **configures but builds nothing**, printing a clear SKIP status. So even a
+   developer who configures the project directly without a reflection compiler
+   gets a green, no-op configure instead of a hard error.
+
+```cmake
+# patterns/reflection/reflection-cpp26/CMakeLists.txt  (sketch)
+cmake_minimum_required(VERSION 3.28)
+project(reflection_cpp26 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_FLAGS "-std=c++26")
+check_cxx_source_compiles("
+  #if !defined(__cpp_reflection)
+  #error no reflection
+  #endif
+  int main() {}
+" HAVE_CPP26_REFLECTION)
+
+if(NOT HAVE_CPP26_REFLECTION)
+  message(STATUS
+    "reflection_cpp26: no __cpp_reflection on this compiler — SKIPPING build "
+    "(source is present; needs an experimental P2996 compiler). CI stays green.")
+  return()                          # configure succeeds, builds nothing
+endif()
+
+# …only reached on a reflection-capable compiler: build reflection26_demo + tests…
+```
+
+The aggregate does **not** rely solely on the probe — it simply does not
+`add_subdirectory` the reflection project unless `PATTERN_ENABLE_REFLECTION=ON`,
+so the probe is a convenience for standalone configuration, not the CI guard.
+`reflection-cpp26/README.md` states the requirement (experimental reflection
+compiler) and that it is intentionally gated (FR-C26-9, AC-C26-6).
+
+### C26.6 Per-project CMake contract (C++26)
+
+Each buildable C++26 project reuses the established template (§5) with three
+changes: standard `26`, `cxx_std_26`, and grouped target basenames. Shown for
+`behavioral-cpp26`:
+
+```cmake
+cmake_minimum_required(VERSION 3.28)
+project(behavioral_cpp26 LANGUAGES CXX)
+
+# ---- standard enforcement (NFR-C26-6) ----
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# ---- warnings policy (NFR-C26-5) : identical PATTERN_WERROR carrier as other tiers ----
+option(PATTERN_WERROR "Treat compiler warnings as errors" OFF)
+if(NOT TARGET pattern_warnings)
+  add_library(pattern_warnings INTERFACE)
+  target_compile_options(pattern_warnings INTERFACE
+    -Wall -Wextra -Wpedantic
+    $<$<BOOL:${PATTERN_WERROR}>:-Werror>)
+endif()
+
+# ---- pattern code: header-only INTERFACE lib (compat.hpp travels with it) ----
+add_library(behavioral26 INTERFACE)
+target_include_directories(behavioral26 INTERFACE
+  "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_features(behavioral26 INTERFACE cxx_std_26)
+
+# ---- demo (FR-C26-3) ----
+add_executable(behavioral26_demo app/main.cpp)
+target_link_libraries(behavioral26_demo PRIVATE behavioral26 pattern_warnings)
+
+# ---- tests (FR-C26-4) ----
+include(CTest)
+if(BUILD_TESTING)
+  if(NOT TARGET Catch2::Catch2WithMain)
+    find_package(Catch2 3 QUIET)
+  endif()
+  if(NOT TARGET Catch2::Catch2WithMain)
+    include(FetchContent)
+    FetchContent_Declare(Catch2
+      GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+      GIT_TAG v3.7.1 GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(Catch2)
+  endif()
+  if(DEFINED catch2_SOURCE_DIR)
+    list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
+  endif()
+  include(Catch)
+
+  add_executable(behavioral26_tests
+    tests/strategy_test.cpp tests/observer_test.cpp tests/command_test.cpp
+    tests/state_test.cpp tests/interpreter_test.cpp tests/template_method_test.cpp
+    tests/iterator_test.cpp tests/chain_test.cpp tests/memento_test.cpp)
+  target_link_libraries(behavioral26_tests
+    PRIVATE behavioral26 pattern_warnings Catch2::Catch2WithMain)
+  catch_discover_tests(behavioral26_tests)
+endif()
+```
+
+Target naming (DD-C26-10): lib `<group>26`, demo `<group>26_demo`, tests
+`<group>26_tests` (e.g. `creational26`, `structural26`, `behavioral26`). CMake
+project names use underscores (`behavioral_cpp26`); directory names stay
+kebab-case (`behavioral-cpp26`), consistent with §5.
+
+### C26.7 Aggregate wiring (FR-C26-10, NFR-C26-4, DD-C26-9)
+
+The **single** aggregate root `CMakeLists.txt` (shared by all four tiers,
+OQ-C26-3) gains one new option. The C++26 grouping requires g++-14
+`-std=c++26`; clang-18 and g++-13 cannot build it (A-C26-1), so it is **off by
+default** and switched on **only in the g++-14 CI job**.
+
+```cmake
+# ---- C++26 tier (requires g++-14 -std=c++26) --------------------------------
+# Default OFF so the existing C++20 (all compilers) / C++23 (g++-14) aggregate
+# is unchanged on non-g++-14 jobs. CI's g++-14 job passes -DPATTERN_ENABLE_CPP26=ON.
+option(PATTERN_ENABLE_CPP26
+       "Aggregate the C++26 idiom tier (requires g++-14 -std=c++26)" OFF)
+
+# Reflection showcase is independently gated (never built by default / in CI).
+option(PATTERN_ENABLE_REFLECTION
+       "Build the C++26 reflection showcase (needs an experimental P2996 compiler)" OFF)
+
+if(PATTERN_ENABLE_CPP26)
+  add_subdirectory(patterns/creational/creational-cpp26)
+  add_subdirectory(patterns/structural/structural-cpp26)
+  add_subdirectory(patterns/behavioral/behavioral-cpp26)
+  if(PATTERN_ENABLE_REFLECTION)
+    add_subdirectory(patterns/reflection/reflection-cpp26)
+  endif()
+endif()
+```
+
+**Interaction with the existing `PATTERN_CXX20_ONLY`:** orthogonal. A
+portability job keeps `PATTERN_CXX20_ONLY=ON` and leaves `PATTERN_ENABLE_CPP26`
+OFF. The g++-14 job runs with `PATTERN_CXX20_ONLY=OFF` (builds C++23) **and**
+`PATTERN_ENABLE_CPP26=ON` (adds the three C++26 projects). `PATTERN_ENABLE_REFLECTION`
+is **never** set by CI (AC-C26-7).
+
+**CI guidance (informational — Release Engineer owns the pipeline):**
+- g++-14 job (adds C++26, strict warnings):
+  ```bash
+  cmake -S . -B build-gcc14 -G Ninja \
+        -DCMAKE_CXX_COMPILER=g++-14 \
+        -DPATTERN_ENABLE_CPP26=ON \
+        -DPATTERN_WERROR=ON \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  cmake --build build-gcc14
+  ctest --test-dir build-gcc14 --output-on-failure
+  ```
+- g++-13 / clang-18 jobs: leave `PATTERN_ENABLE_CPP26` OFF (unchanged behaviour).
+- **Reflection stays unbuilt** everywhere in CI (`PATTERN_ENABLE_REFLECTION`
+  never set) → AC-C26-6/7 satisfied; C22's unbuildability cannot affect CI.
+- Standalone verification (proves FR-C26-2): configure+build one C++26 project
+  from its own directory with g++-14, e.g.
+  `cmake -S patterns/behavioral/behavioral-cpp26 -B /tmp/b26 -DCMAKE_CXX_COMPILER=g++-14 && cmake --build /tmp/b26 && ctest --test-dir /tmp/b26`.
+
+### C26.8 Testability check (NFR-C26-7)
+
+- **No singletons in the testable surface** except C1, which exists *precisely*
+  to demonstrate `= delete("reason")`; its accessor is tested via the single
+  instance and its deleted copy is proven by a commented non-compiling line (not
+  a runtime test).
+- Pattern logic is header-only and free of I/O, so Catch2 TUs `#include` the
+  headers and assert on pure behaviour: `transition`/`describe` (C16), `eval`
+  (C17), `ApprovalChain::handle` (C20), `Editor` snapshot round-trip (C21),
+  factory error branches (C2), etc. — **no mocking required**.
+- The **shim fallbacks are themselves unit-tested** (FR-C26-7): `function_ref`
+  binds + forwards; `polymorphic` deep-copies a derived type (construct base-ref
+  from derived, copy, mutate original, assert clone unchanged); `indirect`
+  deep-copies and goes valueless after move. These tests pin the fallback
+  contract on the baseline toolchain where the std types are absent.
+- Collaborators are injected (strategies, handlers, pricing) as `function_ref` /
+  `move_only_function` parameters — tests pass lambdas directly.
+
+### C26.9 Design Decisions & Trade-offs (C++26 tier)
+
+| # | Decision | Alternatives considered | Why chosen |
+|---|----------|------------------------|-----------|
+| DD-C26-1 | **Four standalone projects grouped by GoF category** (creational/structural/behavioral + gated reflection). | (a) One project per pattern (21+1). (b) One monolithic C++26 project. | 21-per-pattern explodes CMake boilerplate; a monolith breaks the standalone-project contract and the per-category navigability. Grouping matches the stakeholder's single grouped behavioral source and keeps each group a self-contained unit (FR-C26-2, FR-C26-10). |
+| DD-C26-2 | **Header-only pattern logic + thin `app/main.cpp` demo + Catch2 tests.** | A single demo TU that both runs and is "tested" (as the reference file is shaped). | A single TU cannot be `#include`d by tests without pulling in `main()`. Splitting logic into headers lets Catch2 assert on it directly (FR-C26-4) and matches the C++20/23 tiers' header-first contract (DD-3). |
+| DD-C26-3 | **Per-project `compat.hpp` in namespace `gof`**, placed beside the pattern headers. | A single repo-shared shim header. | A shared header would couple the four projects and break standalone builds (FR-C26-2, OQ-C26-2). Namespace `gof` matches the stakeholder reference and the "retire GoF boilerplate" narrative; it is the only non-`mcpp` namespace and is confined to the shim. |
+| DD-C26-4 | **Feature-test-macro selection: prefer the std type, else fallback** (`__cpp_lib_function_ref` / `_polymorphic` / `_indirect` / `_generator`). | Always use the fallback; or `__has_include` on the headers. | Macros are the standard, precise gate and let the code *automatically* upgrade to the real type as g++ gains it (A-C26-2, NFR-C26-3). `__has_include` can report a header that doesn't yet define the type. |
+| DD-C26-5 | **`function_ref` fallback = non-owning `{void*, thunk}`, no null state.** | A `std::function`-style owning fallback. | Owning would change semantics (allocation, copies) and defeat the idiom being demonstrated (zero-alloc per-call strategy). Non-owning + no-null mirrors `std::function_ref` exactly. |
+| DD-C26-6 | **`polymorphic` fallback = type-erased copier/deleter captured from concrete `U`** (deep-clones the dynamic type, no virtual `clone()`). | A fallback requiring a virtual `T::clone()` on the base. | The copier approach keeps **user code identical** to the real `std::polymorphic` and genuinely demonstrates "copy = deep clone" without forcing a `clone()` into every demo base. Limits (copyable `U`, complete type, no allocator, not `constexpr`) are documented honestly (A-C26-2). |
+| DD-C26-7 | **`indirect` fallback = single owned heap box, value copy, valueless-after-move.** | Reuse `polymorphic` for recursion. | `indirect` is deliberately **non-polymorphic** value semantics — lighter and semantically correct for recursive aggregates (C17 `Expr`); conflating it with `polymorphic` would misrepresent both std types. |
+| DD-C26-8 | **Reflection gated by `PATTERN_ENABLE_REFLECTION` (default OFF) at the aggregate + a `__cpp_reflection` probe for standalone configure.** | A probe only; or deleting the source until a compiler exists. | The aggregate option is the hard CI guard (CI never sets it → green, AC-C26-7); the probe makes a direct standalone configure a graceful no-op instead of a hard error. Source stays committed + documented (FR-C26-8, A-C26-3). |
+| DD-C26-9 | **Single shared aggregate; C++26 behind new `PATTERN_ENABLE_CPP26` (default OFF), enabled only in the g++-14 job.** | Separate aggregate/CI entry point for C++26; or always-on. | One entry point keeps the three (now four) tiers reading as one collection (OQ-C26-3). Default-OFF leaves g++-13/clang-18 jobs untouched; only g++-14 (the sole capable compiler, A-C26-1) opts in. Orthogonal to the existing `PATTERN_CXX20_ONLY`. |
+| DD-C26-10 | **Directory `patterns/<group>/<group>-cpp26`; targets `<group>26[_demo/_tests]`; new `patterns/reflection/` category.** | Fold reflection into an existing GoF category; or flat naming. | Path keeps the self-describing `-cpp<std>` convention (FR-C26-10, DD-8). Reflection is a language-feature showcase, not a GoF category, so it earns its own directory rather than distorting an existing one. |
+| DD-C26-11 | **Keep the `#if defined(__cpp_lib_generator)` guard at C19 call sites even though g++-14 provides `<generator>`.** | Use `std::generator` unconditionally (it is present on baseline). | The guard preserves the reference file's internal-iterator (`function_ref`) fallback, keeps the idiom honest/portable, and documents the standards-tracking intent at no cost (the std path is taken on g++-14). |
+| DD-C26-12 | **Adopt the stakeholder `file_behavioral.cpp` as the behavioral seed**, splitting its nine patterns into headers + splitting `main()` into `app/main.cpp`. | Re-design the behavioral scenarios from scratch. | The reference is idiomatic, already fixes the `compat.hpp` surface, and is the authoritative sample; re-designing would risk drift from the shim contract it defines. |
+
+### C26.10 Risks (C++26 tier)
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|------|-----------|--------|-----------|
+| R-C26-1 | A developer builds the C++26 tier with g++-13/clang-18 and hits hard errors (missing C++26). | Med | Med | `PATTERN_ENABLE_CPP26` default OFF; READMEs + this section state g++-14 only (A-C26-1). CI only enables it in the g++-14 job. |
+| R-C26-2 | `gof::polymorphic` fallback copies the *static* type instead of the dynamic one. | Low | High (C5/C7/C9 wrong) | Copier is instantiated from the concrete `U` at construction (DD-C26-6); a dedicated test constructs via base-ref-from-derived and asserts the clone's dynamic behaviour. |
+| R-C26-3 | `function_ref` fallback dangles (referent outlived by the ref). | Med | High (UB) | Contract documents non-owning lifetime; usage is confined to call-scoped (`sort_with`) or clearly-scoped internal iteration; tests exercise only in-scope referents. |
+| R-C26-4 | g++-14 *gains* `std::function_ref`/`indirect`/`polymorphic` in a point release, diverging real vs fallback behaviour. | Low | Low | Macro selection auto-prefers the std type (DD-C26-4); shim tests assert the same contract both ways, catching divergence. |
+| R-C26-5 | Reflection source accidentally wired into default/CI build, breaking it. | Low | High (AC-C26-7 fail) | Double gate (DD-C26-8): aggregate omits the subdir unless `PATTERN_ENABLE_REFLECTION=ON` **and** the standalone probe no-ops without `__cpp_reflection`. CI never sets the option. |
+| R-C26-6 | `cxx_std_26` unsupported by the installed CMake. | Low | Med | NFR-C26-6 pins CMake ≥ 3.28, which knows `cxx_std_26`; aggregate already requires 3.28. |
+| R-C26-7 | Shim duplicated across four `compat.hpp` copies drifts out of sync. | Med | Low | The four copies are byte-identical by contract (§C26.3 is the single source of truth); a CI `diff` of the four files can assert equality. Accepted cost of standalone-ness (DD-C26-3). |
+| R-C26-8 | Scope creep (adding install/export targets, a real shim library, more idioms). | Low | Med | Out of scope per SRS §10.5; flag back to the Requirements Analyst rather than deciding unilaterally. |
+
+**Requirement-gap flag:** none blocking. One **note** for the Requirements
+Analyst (not a blocker): SRS §10.2 places C22 under the existing three GoF
+categories implicitly, but reflection is not a GoF category — this design adds a
+`patterns/reflection/` grouping to host it cleanly. If the Analyst prefers C22
+filed under an existing category, that is a one-line relocation; the design flags
+it rather than silently expanding the category taxonomy.
+
+### C26.11 Handoff (C++26 tier)
+
+**Directories to create under `patterns/`:**
+```
+patterns/
+├── creational/creational-cpp26/     (lib: creational26 | demo | tests | compat.hpp)   C1–C5
+├── structural/structural-cpp26/     (lib: structural26 | demo | tests | compat.hpp)   C6–C12
+├── behavioral/behavioral-cpp26/     (lib: behavioral26 | demo | tests | compat.hpp)   C13–C21
+└── reflection/reflection-cpp26/     (lib: reflection26 | demo | tests | compat.hpp)   C22 — GATED
+```
+Plus two new options in the root `CMakeLists.txt`: `PATTERN_ENABLE_CPP26`
+(default OFF) and `PATTERN_ENABLE_REFLECTION` (default OFF), wired per §C26.7.
+
+**Recommended implementation order** (validate the shim + CMake contract on the
+pre-seeded group first, then the from-scratch groups, reflection last):
+
+1. **`behavioral-cpp26`** — port the stakeholder reference: author `compat.hpp`
+   (all four `gof` types + their fallback unit tests), split C13–C21 into
+   headers, split `main()` into `app/main.cpp`. This validates the shim and the
+   C++26 CMake/Catch2 contract end-to-end.
+2. **`creational-cpp26`** (C1–C5) — copy the validated `compat.hpp`; implement
+   the five patterns (exercises `= delete("reason")`, deducing this,
+   `move_only_function`+`expected`, `gof::polymorphic`).
+3. **`structural-cpp26`** (C6–C12) — copy `compat.hpp`; implement the seven
+   patterns (exercises `gof::polymorphic` bridge/decorator, `expected::transform`
+   facade, `call_once` proxy, `shared_ptr<const T>` flyweight).
+4. Wire `PATTERN_ENABLE_CPP26` into the aggregate; add the g++-14 CI job knob.
+5. **`reflection-cpp26`** (C22) — commit the showcase source + README; implement
+   the two-layer gate (`PATTERN_ENABLE_REFLECTION` + `__cpp_reflection` probe);
+   confirm it builds nothing and stays green without a reflection compiler.
+
+**Design is ready for the C++ Developer agent to implement.**
