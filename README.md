@@ -3,12 +3,14 @@
 [![CI](https://github.com/vladiant/ModernCppDesignPatterns/actions/workflows/ci.yml/badge.svg)](https://github.com/vladiant/ModernCppDesignPatterns/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A curated portfolio of **8 classic Gang-of-Four (GoF) design patterns**, each
-re-expressed with **modern C++20 or C++23 idioms** instead of the C++98-era
-textbook form. The point is not exhaustive pattern coverage but **breadth of
-idiom coverage**: every pattern is deliberately paired with a standard whose
-language and library features let it be expressed in a cleaner, safer, and often
-virtual-free way.
+A curated portfolio of **Gang-of-Four (GoF) design patterns re-expressed with
+modern C++ idioms** instead of the C++98-era textbook form. It has two parts: a
+set of **8 standalone C++20/C++23 pattern projects**, and an opt-in **C++26
+idiom tier** that regroups **21 GoF patterns** — plus a build-gated reflection
+showcase — around the newest language and library facilities. The point is not
+exhaustive pattern coverage but **breadth of idiom coverage**: every pattern is
+deliberately paired with a standard whose language and library features let it
+be expressed in a cleaner, safer, and often virtual-free way.
 
 Each pattern is delivered as an **independent, standalone CMake project** —
 configure, build, run the demo, and test it on its own — while a top-level
@@ -17,6 +19,13 @@ convenience and CI, and optionally adds an opt-in **C++26 idiom tier** (see
 *Toolchain & requirements*).
 
 ## Patterns
+
+The portfolio is organized in two bodies of work: the original **8 standalone
+C++20/C++23 projects** (one pattern per project), and the opt-in **C++26 idiom
+tier** that regroups 21 patterns into three per-category projects plus a
+build-gated reflection showcase.
+
+### C++20 / C++23 — eight standalone projects
 
 | Pattern | GoF category | C++ standard | Showcased idiom(s) | Project |
 |---------|--------------|--------------|--------------------|---------|
@@ -29,8 +38,48 @@ convenience and CI, and optionally adds an opt-in **C++26 idiom tier** (see
 | Command | Behavioral | C++23 | `std::expected`, **`static operator()`**, **`if consteval`** | [`patterns/behavioral/command-cpp23`](patterns/behavioral/command-cpp23/README.md) |
 | Visitor | Behavioral | C++23 | `std::variant` + `overloaded`, **deducing this** self-recursion | [`patterns/behavioral/visitor-cpp23`](patterns/behavioral/visitor-cpp23/README.md) |
 
-Four projects target **C++20** and four target **C++23**, with coverage across
-all three GoF categories.
+Four of these projects target **C++20** and four target **C++23**, with coverage
+across all three GoF categories.
+
+### C++26 idiom tier — 21 patterns, grouped by category
+
+The C++26 tier is an **opt-in** set of three grouped projects (one per GoF
+category) enabled with `-DPATTERN_ENABLE_CPP26=ON`; it builds only with
+**g++-14 `-std=c++26`** and needs **CMake ≥ 3.30** (see *Toolchain &
+requirements*). Each project carries a shared `compat.hpp` shim (namespace
+`gof`) that uses the real standard facility where g++-14 provides it and an
+honest fallback where it does not.
+
+| # | Pattern | GoF category | Showcased C++26 idiom | Project |
+|---|---------|--------------|-----------------------|---------|
+| C1 | Singleton | Creational | `= delete("reason")` copy/move (guarded to plain `= delete` on g++-14) + Meyers accessor | [`creational-cpp26`](patterns/creational/creational-cpp26/README.md) |
+| C2 | Factory Method | Creational | `std::move_only_function` creators + `create()` → `std::expected` | [`creational-cpp26`](patterns/creational/creational-cpp26/README.md) |
+| C3 | Abstract Factory | Creational | a `concept` over *theme* types replaces the virtual factory hierarchy | [`creational-cpp26`](patterns/creational/creational-cpp26/README.md) |
+| C4 | Builder | Creational | **deducing this** `this auto&& self` setters + validated `std::expected` `build()` | [`creational-cpp26`](patterns/creational/creational-cpp26/README.md) |
+| C5 | Prototype | Creational | `gof::polymorphic<T>` — copy **is** deep clone, no virtual `clone()` | [`creational-cpp26`](patterns/creational/creational-cpp26/README.md) |
+| C6 | Adapter | Structural | a `concept` **is** the target interface | [`structural-cpp26`](patterns/structural/structural-cpp26/README.md) |
+| C7 | Bridge | Structural | `gof::polymorphic<Impl>` held by value; copy deep-copies the implementor | [`structural-cpp26`](patterns/structural/structural-cpp26/README.md) |
+| C8 | Composite | Structural | `std::variant` tree + self-recursive **deducing this** lambda over `std::visit` | [`structural-cpp26`](patterns/structural/structural-cpp26/README.md) |
+| C9 | Decorator | Structural | layers owned as `gof::polymorphic`; copying a stack deep-clones the chain | [`structural-cpp26`](patterns/structural/structural-cpp26/README.md) |
+| C10 | Facade | Structural | `std::expected` monadic `and_then`/`transform` chain | [`structural-cpp26`](patterns/structural/structural-cpp26/README.md) |
+| C11 | Flyweight | Structural | `std::shared_ptr<const T>` intern cache | [`structural-cpp26`](patterns/structural/structural-cpp26/README.md) |
+| C12 | Proxy | Structural | `std::call_once` + `std::once_flag` lazy materialization | [`structural-cpp26`](patterns/structural/structural-cpp26/README.md) |
+| C13 | Strategy | Behavioral | `gof::function_ref` per-call + `std::move_only_function` stored | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C14 | Observer | Behavioral | `Signal<Args...>` whose slots are move-only `std::move_only_function` | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C15 | Command | Behavioral | do/undo pairs as `std::move_only_function<void()>` closures | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C16 | State | Behavioral | `std::variant` states × events in one `std::visit` table | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C17 | Visitor / Interpreter | Behavioral | `std::visit` + `overloaded`; `gof::indirect` for recursion | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C18 | Template Method | Behavioral | **deducing this** (`run(this auto&& self)`) + `requires` hook contract | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C19 | Iterator | Behavioral | `std::generator` in-order traversal | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C20 | Chain of Responsibility | Behavioral | `std::optional`-returning `std::move_only_function` handlers | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+| C21 | Memento | Behavioral | plain value-copy snapshot (no friend snapshot class) | [`behavioral-cpp26`](patterns/behavioral/behavioral-cpp26/README.md) |
+
+A 22nd item, **C22 — a P2996 static-reflection showcase**
+([`reflection-cpp26`](patterns/reflection/reflection-cpp26/README.md); `^^T`,
+`[: :]` splice, `template for`, `std::meta`), is committed as documented source
+but builds on **no** compiler in this repo's toolchain. It is double-gated
+behind `PATTERN_ENABLE_REFLECTION` (default `OFF`) and is **never** built by
+default or in CI — see *Toolchain & requirements*.
 
 ## Toolchain & requirements
 
