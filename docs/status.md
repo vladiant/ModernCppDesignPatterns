@@ -1,11 +1,10 @@
 # Project Status — Modern C++ Design Patterns
 
 **As of:** 2026-10-06
-**Version:** `0.1.0` (released; tag `v0.1.0`) — C++26 idiom tier now merged on
-top under `[Unreleased]`; next version bump/tag pending.
-**State:** C++26 idiom tier shipped — implemented, QA-signed-off, wired into the
-aggregate build and a new CI job, and documented. Awaiting version bump/tag by
-the Project Planner.
+**Version:** `0.2.0` (released; tag `v0.2.0`) — C++26 idiom tier shipped on top
+of the initial `0.1.0` portfolio.
+**State:** Released — C++26 idiom tier implemented, QA-signed-off, wired into the
+aggregate build and a new CI job, documented, and tagged `v0.2.0`.
 
 ## Summary
 
@@ -65,7 +64,7 @@ QA-signed off; CI is green across all three jobs. Repo-facing documentation
 
 - **v0.1.0** (2026-10-05) — first release: the initial portfolio of eight
   modern-C++ GoF patterns. `CHANGELOG.md` holds the detailed entry.
-- **[Unreleased]** — C++26 idiom tier (four projects, 89 new tests, `compat.hpp`
-  shim, gated reflection showcase, `PATTERN_ENABLE_CPP26` /
-  `PATTERN_ENABLE_REFLECTION` options, `build-cpp26` CI job). Version bump/tag
-  pending.
+- **v0.2.0** (2026-10-06) — C++26 idiom tier (four projects, 89 new tests,
+  `compat.hpp` shim, gated reflection showcase, `PATTERN_ENABLE_CPP26` /
+  `PATTERN_ENABLE_REFLECTION` options, `build-cpp26` CI job). `CHANGELOG.md`
+  holds the detailed entry.
