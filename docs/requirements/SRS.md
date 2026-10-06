@@ -233,3 +233,237 @@ one C++23 example; Behavioral has two of each.
    shaky libstdc++ 13 support, and the standard output approach
    (`std::format` + streams vs guarded `std::print`) (A-1).
 6. Resolution of Open Questions OQ-1, OQ-4, OQ-5 with the stakeholder as needed.
+
+---
+
+## 10. Addendum — C++26 Idiom Tier
+
+> This addendum extends the SRS with a **new third standard tier** (C++26)
+> layered on top of the existing C++20/C++23 collection. Sections 1–9 remain
+> unchanged and authoritative for the original 8-pattern collection. The IDs
+> below are namespaced (`-C26-`) so they never collide with or renumber the
+> existing requirements.
+
+### 10.1 Purpose & Scope (C++26 tier)
+
+**Purpose.** Add a C++26 idiom tier that re-expresses a broad set of GoF
+patterns using **C++26 language and library idioms**, demonstrating to a
+portfolio reviewer fluency with the newest standard's facilities and the
+judgment to retire older boilerplate (virtual `clone()`, `std::function`
+everywhere, double-dispatch `accept()/visit()`, per-command classes, etc.).
+
+**Scope.**
+- A catalogue of **21 pattern→idiom re-expressions plus 1 reflection
+  showcase** (Section 10.2), each delivered in the **same standalone-project
+  form** already established for the C++20/C++23 tiers (own `project()`, header
+  code, runnable `_demo`, Catch2 v3 tests, per-project README).
+- The tier is organized as a **distinct standard grouping** alongside the
+  existing C++20 and C++23 samples — "different samples for different
+  standard," consistent with the current repository structure.
+- Clarity and idiomatic style continue to take priority over feature
+  maximalism (consistent with Section 1.2 and NFR-8).
+
+**Non-Goals.** See Section 10.5.
+
+### 10.2 Pattern → C++26 Idiom Catalogue (Functional Requirements)
+
+- **FR-C26-1 — Catalogue delivery.** The C++26 tier shall deliver one
+  standalone project per row of the table below. Each project shall visibly
+  use the named C++26 idiom in place of the "Replaces" column's older
+  construct, in a way a reviewer can identify.
+
+| # | Pattern | C++26 idiom | Replaces |
+|---|---------|-------------|----------|
+| C1 | Singleton | `= delete("reason")` | silent/cryptic deleted-copy errors |
+| C2 | Factory Method | `std::move_only_function` creators + `std::expected` | `std::function`, null returns, exceptions |
+| C3 | Abstract Factory | concepts over "theme" types | virtual factory hierarchy |
+| C4 | Builder | deducing this (`this auto&& self`) | duplicated `&`/`&&` overloads |
+| C5 | Prototype | `std::polymorphic<T>` (copy = deep clone) | virtual `clone()` |
+| C6 | Adapter | concept as the target interface | abstract target base |
+| C7 | Bridge | `std::polymorphic<Impl>` member | raw/unique pointer to implementor |
+| C8 | Composite | `std::variant` + recursive lambda via deducing this | virtual Component tree |
+| C9 | Decorator | layers owned as `std::polymorphic` | manual clone plumbing |
+| C10 | Facade | `std::expected::transform` chain | nested error checks |
+| C11 | Flyweight | `shared_ptr<const T>` cache | (n/a) |
+| C12 | Proxy | `std::call_once` lazy load | hand-rolled flag + mutex |
+| C13 | Strategy | `std::function_ref` (per call) + `move_only_function` (stored) | `std::function` everywhere |
+| C14 | Observer | `Signal<Args...>` of move-only slots | `std::function` + copies |
+| C15 | Command | do/undo closure pairs | one class per command |
+| C16 | State | `variant` states × events, one `std::visit` | State base class + subclasses |
+| C17 | Visitor/Interpreter | `std::visit` + `overloaded`, `std::indirect` for recursion | `accept()`/`visit()` double dispatch |
+| C18 | Template Method | deducing this + `requires` on hooks | virtual hooks / CRTP |
+| C19 | Iterator | `std::generator` (internal-iterator fallback) | hand-written iterator classes |
+| C20 | Chain of Responsibility | `optional`-returning handlers | linked handler objects |
+| C21 | Memento | plain value copy | friend-access snapshot class |
+| C22 | Reflection showcase | `^^T`, `[: :]`, `template for` | hand-written switches / per-type visitors |
+
+- **FR-C26-2 — Standalone projects.** Each C26 item shall be an independent
+  CMake project with its own `project()` and `CMakeLists.txt`, configurable and
+  buildable in isolation (consistent with FR-1).
+- **FR-C26-3 — Runnable demo.** Each C26 item shall produce a runnable
+  `_demo` executable that exercises the idiom and prints human-readable output
+  (consistent with FR-2).
+- **FR-C26-4 — Unit tests.** Each C26 item shall include **Catch2 v3** unit
+  tests that verify observable behavior/contract and run via `ctest`
+  (consistent with FR-3).
+- **FR-C26-5 — Idiom demonstration.** Each C26 item's code shall visibly use
+  its named C++26 idiom (FR-C26-1) such that a reviewer can identify it (e.g. a
+  `= delete("reason")` declaration, a `this auto&& self` parameter, a
+  `std::polymorphic<T>` member, a `std::generator<T>` function).
+- **FR-C26-6 — Standard enforced.** Each C26 project shall configure and
+  require `-std=c++26` (C++ standard 26) via its own build configuration
+  (consistent with FR-5, NFR-4).
+- **FR-C26-7 — Compatibility shim for missing library facilities.** For the
+  idioms that rely on library types **not provided** by the available
+  toolchain (`std::function_ref`, `std::polymorphic`, `std::indirect`, and
+  `overloaded` where absent), the tier shall provide a small compatibility
+  shim selected via **feature-test macros** so that the idiom's *intent* is
+  demonstrated with a standards-tracking fallback when the real type is
+  unavailable (see A-C26-1/2). The shim shall prefer the standard type when the
+  feature-test macro reports it present.
+- **FR-C26-8 — Reflection showcase is build-gated.** Item C22 (reflection
+  showcase) shall be present as source but **excluded from the default build
+  and from CI** behind an explicit opt-in build gate, since no available
+  compiler can build it (see A-C26-3). Its README shall document that it
+  requires an experimental reflection-capable compiler.
+- **FR-C26-9 — Discoverability.** Each C26 project directory shall contain a
+  README stating the pattern, the target standard (C++26), the C++26 idiom
+  demonstrated, and — where applicable — which shim/fallback is active on the
+  baseline toolchain (consistent with FR-7).
+- **FR-C26-10 — Structural consistency with existing tiers.** The C++26 tier
+  shall be grouped/organized by standard in the same manner as the existing
+  C++20 and C++23 samples, so the three tiers read as a consistent,
+  self-describing collection.
+
+### 10.3 Non-Functional Requirements (C++26 tier)
+
+- **NFR-C26-1 — Toolchain reality.** The available compilers are **g++ 13.3,
+  g++-14 (14.2), and clang-18**. There is **no g++-15 and no clang-19/20**. The
+  C++26 tier shall build on **g++-14 with `-std=c++26`**
+  (`__cplusplus == 202400`) as its baseline compiler.
+- **NFR-C26-2 — Known-available C++26 facilities.** The tier may rely directly,
+  without a shim, on facilities g++-14 `-std=c++26` is verified to provide:
+  `std::generator`, `std::move_only_function`, `std::expected`, and
+  *deducing this*.
+- **NFR-C26-3 — Known-unavailable facilities require shims/gating.** g++-14
+  `-std=c++26` does **not** provide `std::function_ref`, `std::polymorphic`,
+  `std::indirect`, nor P2996 reflection (`^^T`, `[: :]`, `template for`).
+  Items depending on the first three shall use the FR-C26-7 shim; the
+  reflection item shall be build-gated per FR-C26-8.
+- **NFR-C26-4 — CI must stay green.** The default/CI build shall compile, run,
+  and test **all non-gated** C26 items cleanly on the baseline toolchain, with
+  **no build and no test failures**. The reflection showcase (C22) being
+  unbuildable here shall **not** break CI (it is excluded from the default/CI
+  build per FR-C26-8).
+- **NFR-C26-5 — Warnings policy.** C26 projects shall enable a strong warning
+  set (`-Wall -Wextra -Wpedantic`) and support warnings-as-errors (`-Werror`)
+  in the strict/CI configuration with zero warnings on the baseline toolchain
+  (consistent with NFR-3).
+- **NFR-C26-6 — Build system.** CMake **≥ 3.28** remains the baseline
+  (consistent with NFR-2); each project sets the C++ standard to 26 with
+  `CMAKE_CXX_STANDARD_REQUIRED ON` and `CMAKE_CXX_EXTENSIONS OFF` (consistent
+  with NFR-4).
+- **NFR-C26-7 — Test framework consistency.** Catch2 v3 (fetched via
+  `FetchContent`) shall be used across all C26 items, matching the existing
+  tiers (consistent with NFR-5); no system-installed third-party library shall
+  be required (consistent with NFR-7).
+- **NFR-C26-8 — Platform baseline.** Linux / Ubuntu 24.04 is the committed
+  baseline for the C++26 tier. Cross-platform support is not committed this
+  iteration (consistent with A-3).
+- **NFR-C26-9 — Readability.** Code shall favor clear, idiomatic,
+  well-commented style; the shim/fallback boundaries shall be obvious to a
+  reviewer (consistent with NFR-8).
+
+### 10.4 Constraints & Assumptions (C++26 tier)
+
+- **A-C26-1 — Baseline compiler is g++-14.** The C++26 tier is validated
+  against g++-14 `-std=c++26`; g++ 13.3 and clang-18 do not implement enough of
+  C++26 to serve as baseline for this tier and are **not** required to build
+  C26 items. (Contrast with NFR-1, which governs the C++20/C++23 tiers only.)
+- **A-C26-2 — Shim is a demonstration aid, not a library.** The FR-C26-7
+  compatibility shim exists so the idiom's intent compiles and runs on the
+  baseline toolchain today; it is not a production-grade reimplementation of the
+  standard types and shall yield to the real standard type as soon as the
+  feature-test macro indicates availability.
+- **A-C26-3 — Reflection genuinely cannot build here.** P2996 reflection
+  (`^^T`, `[: :]`, `template for`) is unavailable on **every** compiler on this
+  machine. Item C22 is therefore an **optional, build-gated showcase**: source
+  present, excluded from default and CI builds, documented as requiring an
+  experimental reflection compiler. It must never be allowed to break CI.
+- **A-C26-4 — Toolchain is fixed/verified.** The compiler set and the
+  provided/missing feature list in NFR-C26-1..3 are verified facts on the
+  development machine at the time of writing and bound the design.
+- **A-C26-5 — Licensing.** All C26 code and any fetched dependency remain MIT
+  license-compatible (consistent with A-4).
+- **A-C26-6 — Scope cap.** The deliverable for this iteration is fixed at the
+  catalogue in Section 10.2 (21 buildable items + 1 gated showcase).
+
+### 10.5 Out of Scope (C++26 tier)
+
+- Any pattern/idiom not listed in Section 10.2.
+- Making the reflection showcase (C22) part of the default or CI build, or
+  providing a non-reflection emulation of it.
+- Backporting C++26 items to build under g++ 13.3 or clang-18.
+- Production-grade reimplementations of `std::function_ref`,
+  `std::polymorphic`, or `std::indirect` (the shim is a demonstration aid only,
+  per A-C26-2).
+- Cross-platform (Windows/macOS) builds of the C++26 tier this iteration.
+- Performance benchmarking; reusable library packaging/install targets.
+- Graphical, networked, or interactive demos — console output is sufficient.
+
+### 10.6 Open Questions (C++26 tier)
+
+- **OQ-C26-1** — Exact opt-in mechanism and naming for the reflection build
+  gate (e.g. a CMake option) is left to the Architect; requirement only mandates
+  that it is off by default and excluded from CI (FR-C26-8).
+- **OQ-C26-2** — Should the shim be a single shared compatibility header reused
+  across C26 items, or per-project? (Structural decision for the Architect; the
+  requirement is only that each item builds standalone — FR-C26-2.)
+- **OQ-C26-3** — Should the three standard tiers (C++20/23/26) share one
+  top-level aggregate/CI entry point, or keep separate ones? (Relates to FR-6 /
+  OQ-3.)
+
+### 10.7 Acceptance Criteria (C++26 tier)
+
+- **AC-C26-1** — All 21 non-gated C26 items (C1–C21) exist, each as its own
+  standalone CMake project, and each configures and builds **in isolation** with
+  **g++-14 `-std=c++26`**. *(FR-C26-1, FR-C26-2, FR-C26-6, NFR-C26-1)*
+- **AC-C26-2** — Each non-gated C26 item builds a `_demo` that runs to
+  completion with exit code 0 and prints output illustrating the idiom.
+  *(FR-C26-3)*
+- **AC-C26-3** — Each non-gated C26 item has Catch2 v3 tests discoverable and
+  passing via `ctest`. *(FR-C26-4, NFR-C26-7)*
+- **AC-C26-4** — Each C26 item's source visibly uses its named C++26 idiom, and
+  its README states pattern + C++26 + idiom (+ active shim where applicable).
+  *(FR-C26-5, FR-C26-9)*
+- **AC-C26-5** — Items depending on `std::function_ref`, `std::polymorphic`, or
+  `std::indirect` build on the baseline toolchain via the feature-test-macro
+  shim, and prefer the real standard type when present. *(FR-C26-7, NFR-C26-3)*
+- **AC-C26-6** — The reflection showcase (C22) is present as source, excluded
+  from the default and CI builds behind an opt-in gate, and documented as
+  requiring an experimental reflection compiler. *(FR-C26-8, A-C26-3)*
+- **AC-C26-7** — The default/CI build is **green**: all non-gated C26 items
+  build, run, and test cleanly, and C22's unbuildability does not affect CI.
+  *(NFR-C26-4)*
+- **AC-C26-8** — Building the C26 tier with warnings-as-errors enabled produces
+  no warnings on g++-14. *(NFR-C26-5)*
+- **AC-C26-9** — The C++26 tier is grouped by standard consistently with the
+  existing C++20 and C++23 samples. *(FR-C26-10)*
+
+### 10.8 Hand-off (C++26 tier)
+
+**What the System Architect must decide next for the C++26 tier:**
+1. Directory/grouping scheme placing the C++26 tier alongside the existing
+   C++20 and C++23 samples (FR-C26-10, consistent with NFR-6).
+2. Shim packaging: shared compatibility header vs per-project, and the exact
+   feature-test macros guarding `std::function_ref` / `std::polymorphic` /
+   `std::indirect` / `overloaded` (FR-C26-7, OQ-C26-2).
+3. The opt-in build gate for the reflection showcase C22 and its exclusion from
+   default/CI (FR-C26-8, OQ-C26-1).
+4. CI wiring that keeps the build green on g++-14 while excluding C22
+   (NFR-C26-4), and whether the three tiers share one CI entry point
+   (OQ-C26-3).
+5. Per-item mapping of idiom to a concrete, reviewer-legible demo scenario
+   (FR-C26-5) without regressing the standalone-project contract (FR-C26-2).
+
+**Requirements are ready for the System Architect agent to design against.**
