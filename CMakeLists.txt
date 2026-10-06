@@ -44,3 +44,28 @@ if(NOT PATTERN_CXX20_ONLY)
   add_subdirectory(patterns/behavioral/command-cpp23)
   add_subdirectory(patterns/behavioral/visitor-cpp23)
 endif()
+
+# ---- C++26 tier (requires g++-14 -std=c++26) --------------------------------
+# Default OFF so the existing C++20 (all compilers) / C++23 (g++-14) aggregate
+# is unchanged on non-g++-14 jobs: with PATTERN_ENABLE_CPP26 OFF the aggregate is
+# byte-for-byte behaviour-identical to before. CI's dedicated g++-14 + CMake>=3.30
+# job (build-cpp26) passes -DPATTERN_ENABLE_CPP26=ON. Orthogonal to
+# PATTERN_CXX20_ONLY (DESIGN §C26.7).
+option(PATTERN_ENABLE_CPP26
+       "Aggregate the C++26 idiom tier (requires g++-14 -std=c++26)" OFF)
+
+# The reflection showcase is independently gated (DESIGN §C26.5). It builds on no
+# compiler available here, so it is NEVER added by default and NEVER in CI: it is
+# wired in only when PATTERN_ENABLE_REFLECTION is explicitly ON (and also only
+# while the C++26 tier is enabled). CI never sets it → CI stays green.
+option(PATTERN_ENABLE_REFLECTION
+       "Build the C++26 reflection showcase (needs an experimental P2996 compiler)" OFF)
+
+if(PATTERN_ENABLE_CPP26)
+  add_subdirectory(patterns/creational/creational-cpp26)
+  add_subdirectory(patterns/structural/structural-cpp26)
+  add_subdirectory(patterns/behavioral/behavioral-cpp26)
+  if(PATTERN_ENABLE_REFLECTION)
+    add_subdirectory(patterns/reflection/reflection-cpp26)
+  endif()
+endif()

@@ -13,6 +13,14 @@
 #     libstdc++ 13 cannot provide std::expected, so it must not try to build the
 #     C++23 projects. Green here proves the C++20 code is compiler-portable.
 #
+#   * build-cpp26 (C++26 IDIOM TIER) - builds+tests the three buildable C++26
+#     projects (creational/structural/behavioral-cpp26) on top of the full
+#     aggregate via -DPATTERN_ENABLE_CPP26=ON. This tier needs g++-14 -std=c++26
+#     AND CMake >= 3.30; the distro ships CMake 3.28 (too old), so this job
+#     provisions CMake from the official Kitware apt repository. The reflection
+#     showcase stays OFF (PATTERN_ENABLE_REFLECTION is never set) so CI stays
+#     green. Kept as a separate job so build-gcc14 can keep the distro CMake.
+#
 # Linux/Ubuntu-24.04 only, matching SRS A-3 / OQ-1 (Linux-only baseline).
 
 name: CI
@@ -111,6 +119,74 @@ jobs:
           -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
 
       - name: Build (4 C++20 projects)
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # --------------------------------------------------------------------------
+  # C++26 IDIOM TIER: full aggregate + the three C++26 projects on GCC 14.
+  #
+  # Requires g++-14 -std=c++26 AND CMake >= 3.30 (the distro's 3.28 cannot build
+  # this tier). We provision CMake from Kitware's official apt repo rather than
+  # trusting the distro package, and pin the exact version for reproducibility.
+  # Reflection is left OFF (PATTERN_ENABLE_REFLECTION never set) so CI stays green.
+  # --------------------------------------------------------------------------
+  build-cpp26:
+    name: gcc-14 C++26 tier (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    env:
+      # Pin a known CMake >= 3.30 from the Kitware apt repo for reproducibility.
+      CMAKE_VERSION: 3.30.5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install GCC 14
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14
+
+      # The distro ships CMake 3.28, which cannot configure the C++26 tier. Add
+      # Kitware's official apt repository (pinned signing key) and install a
+      # pinned CMake >= 3.30. This is free-tier friendly and fully reproducible.
+      - name: Install CMake >= 3.30 (Kitware apt repo)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates gpg wget
+          wget -qO - https://apt.kitware.com/keys/kitware-archive-latest.asc \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] \
+            https://apt.kitware.com/ubuntu/ noble main" \
+            | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y cmake="${CMAKE_VERSION}-*" cmake-data="${CMAKE_VERSION}-*"
+          cmake --version
+
+      - name: Cache Catch2 (FetchContent)
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.deps
+          key: catch2-cpp26-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+
+      # PATTERN_ENABLE_CPP26=ON adds the three C++26 projects on top of the full
+      # 8-project aggregate (C++20 + C++23). PATTERN_ENABLE_REFLECTION is left
+      # unset => the reflection showcase is never configured (DESIGN §C26.5/§C26.7).
+      - name: Configure (full aggregate + C++26 tier)
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_COMPILER=g++-14
+          -DPATTERN_WERROR=ON
+          -DPATTERN_ENABLE_CPP26=ON
+          -DFETCHCONTENT_BASE_DIR=${{ github.workspace }}/.deps
+
+      - name: Build (8 projects + 3 C++26 projects)
         run: cmake --build build --parallel
 
       - name: Test

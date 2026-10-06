@@ -12,7 +12,9 @@ virtual-free way.
 
 Each pattern is delivered as an **independent, standalone CMake project** —
 configure, build, run the demo, and test it on its own — while a top-level
-aggregate `CMakeLists.txt` wires all eight together for convenience and CI.
+aggregate `CMakeLists.txt` wires the eight C++20/C++23 projects together for
+convenience and CI, and optionally adds an opt-in **C++26 idiom tier** (see
+*Toolchain & requirements*).
 
 ## Patterns
 
@@ -40,16 +42,26 @@ all three GoF categories.
 
 Compiler support splits by standard:
 
-| Projects | Compilers |
-|----------|-----------|
-| 4 × **C++20** (Abstract Factory, Adapter, Strategy, Observer) | **g++ 13**, **g++-14**, **clang-18** |
-| 4 × **C++23** (Builder, Decorator, Command, Visitor) | **g++-14** |
+| Projects | Compilers | Extra requirement |
+|----------|-----------|-------------------|
+| 4 × **C++20** (Abstract Factory, Adapter, Strategy, Observer) | **g++ 13**, **g++-14**, **clang-18** | CMake ≥ 3.28 |
+| 4 × **C++23** (Builder, Decorator, Command, Visitor) | **g++-14** | CMake ≥ 3.28 |
+| 3 × **C++26** idiom tier (`creational/structural/behavioral-cpp26`) | **g++-14** `-std=c++26` | **CMake ≥ 3.30** |
 
 The C++23 subset is built with **GCC 14**. Three of these projects (Builder,
 Decorator, Visitor) use *deducing this* (P0847), which **requires GCC 14** — the
 default `g++` 13.3 cannot build them, and clang-18 + libstdc++ 13 cannot build
 the C++23 subset (it hides `std::expected`). The full aggregate build therefore
 requires **g++-14**.
+
+The **C++26 idiom tier** is an opt-in set of three projects (one per GoF
+category) enabled with `-DPATTERN_ENABLE_CPP26=ON`. It builds **only** with
+**g++-14 `-std=c++26`** and needs **CMake ≥ 3.30** (Ubuntu 24.04's stock CMake
+3.28 cannot configure it), so it is **off by default** and leaves the existing
+C++20/C++23 aggregate unchanged. A fourth, P2996 **reflection showcase**
+(`patterns/reflection/reflection-cpp26`) is committed as source but builds on no
+currently available compiler; it is double-gated behind
+`PATTERN_ENABLE_REFLECTION` (default `OFF`) and is **never** built in CI.
 
 ## Build & test
 
@@ -81,6 +93,23 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
+### C++26 idiom tier (opt-in, g++-14 + CMake ≥ 3.30)
+
+`PATTERN_ENABLE_CPP26=ON` adds the three C++26 projects on top of the full
+8-project aggregate. This needs **g++-14 `-std=c++26`** and **CMake ≥ 3.30**
+(stock 3.28 cannot configure it). The reflection showcase stays off, so the run
+builds and tests the 8 base projects plus the **89** C++26 tests:
+
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_COMPILER=g++-14 \
+  -DPATTERN_WERROR=ON \
+  -DPATTERN_ENABLE_CPP26=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure   # 135 tests (46 base + 89 C++26)
+```
+
 ### A single pattern, standalone
 
 Each project owns its `project()` and is buildable from its own directory —
@@ -103,6 +132,8 @@ Each project's demo executable is named `<pattern>_demo` (e.g. `builder_demo`,
 |--------|---------|--------|
 | `PATTERN_WERROR` | `OFF` | Treat compiler warnings as errors (`-Werror`). CI builds with `ON`. |
 | `PATTERN_CXX20_ONLY` | `OFF` | Aggregate build only: include just the four C++20 projects (for toolchains without full C++23 support). Does not change any subproject's sources, standard, or interface. |
+| `PATTERN_ENABLE_CPP26` | `OFF` | Aggregate build only: also add the three C++26 projects (requires **g++-14 `-std=c++26`** and **CMake ≥ 3.30**). Orthogonal to `PATTERN_CXX20_ONLY`; OFF leaves the C++20/C++23 aggregate unchanged. |
+| `PATTERN_ENABLE_REFLECTION` | `OFF` | Aggregate build only: also add the P2996 reflection showcase (needs an experimental reflection compiler; only honored when `PATTERN_ENABLE_CPP26=ON`). Never set in CI. |
 
 Testing is wired through CTest and enabled by the standard `BUILD_TESTING`
 option (`ON` by default).
@@ -118,15 +149,20 @@ option (`ON` by default).
 ├── patterns/
 │   ├── creational/
 │   │   ├── abstract-factory-cpp20/
-│   │   └── builder-cpp23/
+│   │   ├── builder-cpp23/
+│   │   └── creational-cpp26/   # C++26 tier (opt-in: PATTERN_ENABLE_CPP26)
 │   ├── structural/
 │   │   ├── adapter-cpp20/
-│   │   └── decorator-cpp23/
-│   └── behavioral/
-│       ├── strategy-cpp20/
-│       ├── observer-cpp20/
-│       ├── command-cpp23/
-│       └── visitor-cpp23/
+│   │   ├── decorator-cpp23/
+│   │   └── structural-cpp26/   # C++26 tier (opt-in: PATTERN_ENABLE_CPP26)
+│   ├── behavioral/
+│   │   ├── strategy-cpp20/
+│   │   ├── observer-cpp20/
+│   │   ├── command-cpp23/
+│   │   ├── visitor-cpp23/
+│   │   └── behavioral-cpp26/   # C++26 tier (opt-in: PATTERN_ENABLE_CPP26)
+│   └── reflection/
+│       └── reflection-cpp26/   # P2996 showcase (gated: PATTERN_ENABLE_REFLECTION; never in CI)
 └── docs/
     ├── requirements/SRS.md
     ├── design/DESIGN.md
@@ -158,6 +194,11 @@ Each `patterns/<category>/<pattern>-cpp<std>/` project contains:
   `-DPATTERN_WERROR=ON` plus the complete CTest suite, in Debug and Release.
 - **`build-clang18`** (portability) — the C++20 subset built and tested with
   clang-18 via `-DPATTERN_CXX20_ONLY=ON`, in Debug and Release.
+- **`build-cpp26`** (C++26 idiom tier) — full aggregate plus the three C++26
+  projects via `-DPATTERN_ENABLE_CPP26=ON`, built and tested with g++-14, in
+  Debug and Release. Because this tier needs **CMake ≥ 3.30** (newer than the
+  distro's 3.28), the job provisions a pinned CMake from the official Kitware
+  apt repository. The reflection showcase is never enabled, so CI stays green.
 
 ## License
 
