@@ -1,10 +1,11 @@
 # Project Status — Modern C++ Design Patterns
 
 **As of:** 2026-10-06
-**Version:** `0.2.0` (released; tag `v0.2.0`) — C++26 idiom tier shipped on top
-of the initial `0.1.0` portfolio.
+**Version:** `0.2.1` (released; tag `v0.2.1`) — C++26 idiom tier plus its
+portfolio writeup, on top of the initial `0.1.0` portfolio.
 **State:** Released — C++26 idiom tier implemented, QA-signed-off, wired into the
-aggregate build and a new CI job, documented, and tagged `v0.2.0`.
+aggregate build and a new CI job, documented with a long-form writeup, and
+tagged `v0.2.1`.
 
 ## Summary
 
@@ -68,3 +69,5 @@ QA-signed off; CI is green across all three jobs. Repo-facing documentation
   `compat.hpp` shim, gated reflection showcase, `PATTERN_ENABLE_CPP26` /
   `PATTERN_ENABLE_REFLECTION` options, `build-cpp26` CI job). `CHANGELOG.md`
   holds the detailed entry.
+- **v0.2.1** (2026-10-06) — portfolio writeup for the C++26 idiom tier
+  (`docs/writeups/cpp26-idiom-tier.md`); documentation-only.

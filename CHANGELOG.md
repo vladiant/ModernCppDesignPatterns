@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-06
+
+### Added
+
+- **C++26 idiom tier portfolio writeup** — `docs/writeups/cpp26-idiom-tier.md`,
+  a long-form engineering reference covering the pattern→idiom survey, the
+  `compat.hpp` feature-test-macro-vs-fallback shim, the gated P2996 reflection
+  showcase, and the CMake ≥ 3.30 / `PATTERN_ENABLE_CPP26` build-and-CI reality;
+  linked from the README Documentation section. Establishes the `docs/writeups/`
+  directory for long-form pieces.
+
 ## [0.2.0] - 2026-10-06
 
 ### Added
