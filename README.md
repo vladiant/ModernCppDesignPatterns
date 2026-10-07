@@ -233,6 +233,7 @@ Each `patterns/<category>/<pattern>-cpp<std>/` project contains:
 - **Design:** [`docs/design/DESIGN.md`](docs/design/DESIGN.md)
 - **Test report:** [`docs/testing/ModernCppDesignPatterns-test-report.md`](docs/testing/ModernCppDesignPatterns-test-report.md)
 - **Project status:** [`docs/status.md`](docs/status.md)
+- **Writeup — C++26 idiom tier:** [`docs/writeups/cpp26-idiom-tier.md`](docs/writeups/cpp26-idiom-tier.md)
 - **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
 
 ## Continuous integration
